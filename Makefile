@@ -16,8 +16,9 @@ COMDIR = common
 CPU = cortex-m0
 
 # Sources
-SRC = $(wildcard $(SRCDIR)/*.c) # $(wildcard $(COMDIR)/src/*.c)
-ASM = $(wildcard $(SRCDIR)/*.s) # $(wildcard $(COMDIR)/src/*.s)
+SRC = $(wildcard $(SRCDIR)/*.c) $(wildcard $(COMDIR)/src/*.c) 
+CPPSRC = $(wildcard $(SRCDIR)/*.cpp) $(wildcard $(COMDIR)/src/*.cpp)
+ASM = $(wildcard $(SRCDIR)/*.s) $(wildcard $(COMDIR)/src/*.s)
 
 #defines
 DEFINE = -DSTM32F030x6
@@ -29,29 +30,36 @@ INCLUDE  = -I$(INCDIR) -I$(COMDIR)/include -I$(COMDIR)/cmsis
 LSCRIPT = STM32F030F4Px.ld
 
 # C/C++ Flags
-CCOMMONFLAGS = -Wall -O2 -g -fno-common -mthumb -mcpu=$(CPU) --specs=nosys.specs --specs=nano.specs
+CCOMMONFLAGS = -Os -g -mcpu=$(CPU) -mthumb  -Wall  -fno-common  --specs=nosys.specs --specs=nano.specs
+
+# Generate dependency information
+CDEPFLAGS += -MMD -MP -MF $(@:%.o=%.d)
 
 # C Flags
-GCFLAGS  = -std=c11  -Wa,-ahlms=$(addprefix $(OBJDIR)/,$(notdir $(<:.c=.lst)))
-GCFLAGS += $(CCOMMONFLAGS) $(INCLUDE) $(DEFINE) 
+GCFLAGS  = -std=c++14 -fverbose-asm
+GCFLAGS += $(CCOMMONFLAGS) $(INCLUDE) $(DEFINE) $(CDEPFLAGS)
 LDFLAGS += -T$(LSCRIPT) -mthumb -mcpu=$(CPU) --specs=nosys.specs --specs=nano.specs -Wl,-Map,$(BINDIR)/$(PROJECT).map -Wl,--gc-sections
 ASFLAGS += -mcpu=$(CPU)
 
+# CPP Flags
+CPPFLAGS = -fno-exceptions -fno-rtti
+
 # Tools
 CC = arm-none-eabi-gcc
+CP = arm-none-eabi-g++
 AS = arm-none-eabi-as
 AR = arm-none-eabi-ar
 LD = arm-none-eabi-ld
 OBJCOPY = arm-none-eabi-objcopy
-SIZE = arm-none-eabi-size --format=SysV -x
+SIZE = arm-none-eabi-size
 OBJDUMP = arm-none-eabi-objdump
 
 RM = rm -rf
 
 ## Build process
-
-OBJ := $(addprefix $(OBJDIR)/,$(notdir $(SRC:.c=.o)))
-OBJ += $(addprefix $(OBJDIR)/,$(notdir $(ASM:.s=.o)))
+OBJ := $(addprefix $(OBJDIR)/, $(notdir $(SRC:.c=.o)))
+OBJ += $(addprefix $(OBJDIR)/, $(notdir $(ASM:.s=.o)))
+CPPOBJ := $(addprefix $(OBJDIR)/, $(notdir $(CPPSRC:.cpp=.o)))
 
 
 all:: $(BINDIR)/$(PROJECT).bin $(BINDIR)/$(PROJECT).hex
@@ -59,7 +67,7 @@ all:: $(BINDIR)/$(PROJECT).bin $(BINDIR)/$(PROJECT).hex
 Build: $(BINDIR)/$(PROJECT).bin
 
 macros:
-	$(CC) $(GCFLAGS) -dM -E - < /dev/null
+	$(CP) $(GCFLAGS) -dM -E - < /dev/null
 
 cleanBuild: clean
 
@@ -68,34 +76,56 @@ clean:
 	$(RM) $(OBJDIR)
 
 size:
-	$(SIZE) $(BINDIR)/$(PROJECT).elf
+	@$(SIZE) -A -x $(BINDIR)/$(PROJECT).elf
+	@$(SIZE) -A $(BINDIR)/$(PROJECT).elf
 
-# Compilation
+makedebug:
+	@echo $(OBJ)
+	@echo $(CPPOBJ)
 
+#convert to hex
 $(BINDIR)/$(PROJECT).hex: $(BINDIR)/$(PROJECT).elf
 	$(OBJCOPY) -O ihex $(BINDIR)/$(PROJECT).elf $(BINDIR)/$(PROJECT).hex
+	@echo -e ""
+	@$(SIZE) -A -x $(BINDIR)/$(PROJECT).elf
 
+#convert to bin
 $(BINDIR)/$(PROJECT).bin: $(BINDIR)/$(PROJECT).elf
 	$(OBJCOPY) -O binary $(BINDIR)/$(PROJECT).elf $(BINDIR)/$(PROJECT).bin
 
-$(BINDIR)/$(PROJECT).elf: $(OBJ) $(LSCRIPT)
+# linking
+$(BINDIR)/$(PROJECT).elf: $(OBJ) $(CPPOBJ) $(LSCRIPT)
 	@mkdir -p $(dir $@)
-	$(CC) $(OBJ) $(LDFLAGS) -o $(BINDIR)/$(PROJECT).elf
-	$(OBJDUMP) -D $(BINDIR)/$(PROJECT).elf > $(BINDIR)/$(PROJECT).lst
-	$(SIZE) $(BINDIR)/$(PROJECT).elf
+	$(CP) $(OBJ) $(CPPOBJ) $(LDFLAGS) -o $(BINDIR)/$(PROJECT).elf
+	$(OBJDUMP) -drwCS -marm $(BINDIR)/$(PROJECT).elf > $(BINDIR)/$(PROJECT).S
 
+# Compilation
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(GCFLAGS) -c $< -o $@
+	$(CP) $(GCFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(OBJDUMP) -drwCS -marm $@ > $(OBJDIR)/$(notdir $<).S
+	@echo -e ""
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp
+	@mkdir -p $(dir $@)
+	$(CP) $(GCFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(OBJDUMP) -drwCS -marm $@ > $(OBJDIR)/$(notdir $<).S
+	@echo -e ""
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.s
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) -o $@ $<
-
+	@echo -e ""
 
 $(OBJDIR)/%.o: $(COMDIR)/src/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(GCFLAGS) -c $< -o $@
+	$(CP) $(GCFLAGS) $(CPPFLAGS) -c $< -o $@
+	@echo -e ""
+
+$(OBJDIR)/%.o: $(COMDIR)/src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CP) $(GCFLAGS) $(CPPFLAGS) -c $< -o $@
+	@echo -e ""
 
 $(OBJDIR)/%.o: $(COMDIR)/src/%.s
 	@mkdir -p $(dir $@)
@@ -103,3 +133,4 @@ $(OBJDIR)/%.o: $(COMDIR)/src/%.s
 
 $(OBJ): Makefile
 
+-include $(wildcard $(OBJDIR)/*.d)
