@@ -5,14 +5,13 @@
  */
 
 #include "stm32f0xx.h"
-#include "system_stm32f0xx.h"
 
 // delay loop for 8 MHz CPU clock with optimizer enabled
 void delay(uint32_t msec)
 {
     for (uint32_t j = 0; j < 2000UL * msec; j++)
     {
-        __NOP();
+        __asm("nop");
     }
 }
 
