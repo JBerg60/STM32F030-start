@@ -36,7 +36,7 @@ CCOMMONFLAGS = -Os -g -mcpu=$(CPU) -mthumb  -Wall  -fno-common  --specs=nosys.sp
 CDEPFLAGS += -MMD -MP -MF $(@:%.o=%.d)
 
 # C Flags
-GCFLAGS  = -std=c++14 -fverbose-asm
+GCFLAGS  = -std=c++17 -fverbose-asm
 GCFLAGS += $(CCOMMONFLAGS) $(INCLUDE) $(DEFINE) $(CDEPFLAGS)
 LDFLAGS += -T$(LSCRIPT) -mthumb -mcpu=$(CPU) --specs=nosys.specs --specs=nano.specs -Wl,-Map,$(BINDIR)/$(PROJECT).map -Wl,--gc-sections
 ASFLAGS += -mcpu=$(CPU)
